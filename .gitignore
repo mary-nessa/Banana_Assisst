@@ -1,0 +1,41 @@
+# Flutter/Dart specific
+*.g.dart
+*.mocks.dart
+*.lock
+*.log
+*.iml
+*.idea/
+*.flutter-plugins
+*.flutter-plugins-dependencies
+*.packages
+*.pub-cache/
+*.pub/
+build/
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+flutter_*.png
+flutter_export_environment.sh
+
+# Android specific
+android/.gradle/
+android/app/build/
+android/local.properties
+
+# iOS specific
+ios/.generated/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Generated.xcconfig
+ios/Pods/
+ios/Podfile.lock
+
+# Web specific
+web/assets/.DS_Store
+
+# Miscellaneous
+.DS_Store
+.env
+*.pem
+*.key
