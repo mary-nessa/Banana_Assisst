@@ -1,237 +1,566 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'disease_detection_screen.dart';
 import 'variety_detection_screen.dart';
 import 'pesticides_screen.dart';
 import 'recommendations_screen.dart';
 
-class HomeTab extends StatelessWidget {
+class HomeTab extends StatefulWidget {
   final String? userName;
   final VoidCallback? onLogout;
 
   const HomeTab({Key? key, this.userName, this.onLogout}) : super(key: key);
 
   @override
+  State<HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  final List<bool> _isHovered = List.generate(4, (_) => false);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 1),
+      vsync: this,
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Header (optional)
-                _buildHeader(),
-
-                const SizedBox(height: 30),
-
-                // Disease Detection
-                _buildFeatureCard(
-                  context,
-                  icon: Icons.medical_services,
-                  title: 'Disease Detection',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const DiseaseDetectionScreen(),
-                    ),
-                  ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: BackgroundPatternPainter(
+                color: Colors.green[700]!.withOpacity(0.03),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 30,
                 ),
-
-                const SizedBox(height: 20),
-
-                // Variety Identification
-                _buildFeatureCard(
-                  context,
-                  icon: Icons.nature,
-                  title: 'Variety Identification',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const VarietyDetectionScreen(),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Pesticides & Recommendations side by side
-                Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Pesticides
-                    Expanded(
-                      child: _buildFeatureCard(
-                        context,
-                        icon: Icons.bug_report,
-                        title: 'Pesticides',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const PesticidesScreen(),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    // Recommendations
-                    Expanded(
-                      child: _buildFeatureCard(
-                        context,
-                        icon: Icons.thumb_up,
-                        title: 'Recommendations',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const RecommendationsScreen(),
-                          ),
-                        ),
-                      ),
-                    ),
+                    _buildHeader(),
+                    const SizedBox(height: 40),
+                    _buildFeatureGrid(context),
+                    const SizedBox(height: 32),
+                    _buildAppHighlights(),
                   ],
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                // Logout Button (optional)
-                if (onLogout != null) ...[
-                  const SizedBox(height: 40),
-                  ElevatedButton(
-                    onPressed: onLogout,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[800],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40,
-                        vertical: 15,
+  Widget _buildHeader() {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.green[700]!.withOpacity(0.3),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green[700]!.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Colors.green[700]!.withOpacity(0.2),
+                        width: 1,
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      elevation: 5,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.logout),
-                        SizedBox(width: 10),
+                    child: Icon(Icons.eco, size: 28, color: Colors.green[700]),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShaderMask(
+                          shaderCallback:
+                              (bounds) => LinearGradient(
+                                colors: [
+                                  Colors.green[700]!,
+                                  Colors.green[500]!,
+                                ],
+                              ).createShader(bounds),
+                          child: const Text(
+                            'BANANA ASSIST',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
                         Text(
-                          'Logout',
+                          widget.userName != null
+                              ? 'Welcome back, ${widget.userName}!'
+                              : 'Welcome!',
                           style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ],
-              ],
-            ),
+              ),
+              const SizedBox(height: 20),
+              _buildFeatureStatus(),
+            ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    // Example header: add your own branding or remove entirely if not needed
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [],
-          ),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              // Uncomment or customize these lines if you want a header
-              // Text(
-              //   'BANANA ASSIST',
-              //   style: TextStyle(
-              //     fontSize: 32,
-              //     fontWeight: FontWeight.bold,
-              //     color: Colors.green[800],
-              //   ),
-              // ),
-              // const SizedBox(height: 10),
-              // Text(
-              //   userName != null ? 'Welcome, $userName!' : 'Welcome!',
-              //   style: TextStyle(
-              //     fontSize: 20,
-              //     color: Colors.green[800],
-              //     fontWeight: FontWeight.w300,
-              //   ),
-              // ),
-            ],
+        Positioned(
+          right: -10,
+          top: -10,
+          child: CustomPaint(
+            painter: LeafPatternPainter(color: Colors.green[100]!),
+            size: const Size(60, 60),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildFeatureCard(
-      BuildContext context, {
-        required IconData icon,
-        required String title,
-        required VoidCallback onTap,
-      }) {
-    return Container(
-      // Use available width from parent (especially in a Row)
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.green[50]!, Colors.green[100]!],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  Widget _buildFeatureStatus() {
+    return Row(
+      children: [
+        _buildStatusIndicator(
+          icon: Icons.check_circle_outline,
+          label: 'AI Ready',
+          color: Colors.green[700]!,
         ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withOpacity(0.3),
-            spreadRadius: 1,
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+        const SizedBox(width: 16),
+        _buildStatusIndicator(
+          icon: Icons.speed_outlined,
+          label: 'Fast Analysis',
+          color: Colors.orange[700]!,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusIndicator({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: color.withOpacity(0.7)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: color.withOpacity(0.7),
+            fontWeight: FontWeight.w500,
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatureGrid(BuildContext context) {
+    final features = [
+      {
+        'icon': Icons.medical_services,
+        'title': 'Disease Detection',
+        'screen': const DiseaseDetectionScreen(),
+        'gradient': [Colors.red[400]!, Colors.red[700]!],
+      },
+      {
+        'icon': Icons.nature,
+        'title': 'Variety Identify',
+        'screen': const VarietyDetectionScreen(),
+        'gradient': [Colors.green[400]!, Colors.green[700]!],
+      },
+      {
+        'icon': Icons.bug_report,
+        'title': 'Pesticides',
+        'screen': const PesticidesScreen(),
+        'gradient': [Colors.orange[400]!, Colors.orange[700]!],
+      },
+      {
+        'icon': Icons.thumb_up,
+        'title': 'Recommendations',
+        'screen': const RecommendationsScreen(),
+        'gradient': [Colors.blue[400]!, Colors.blue[700]!],
+      },
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 20,
+        mainAxisSpacing: 20,
+        childAspectRatio: 1.1,
       ),
-      margin: const EdgeInsets.symmetric(vertical: 0), // Adjust if needed
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Row(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.green[200],
-                    borderRadius: BorderRadius.circular(10),
+      itemCount: features.length,
+      itemBuilder: (context, index) {
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final double delay = index * 0.2;
+            final double animationValue = (_controller.value - delay).clamp(
+              0.0,
+              1.0,
+            );
+            return Transform.translate(
+              offset: Offset(0, (1 - animationValue) * 50),
+              child: Opacity(
+                opacity: animationValue,
+                child: _buildFeatureCard(
+                  context,
+                  icon: features[index]['icon'] as IconData,
+                  title: features[index]['title'] as String,
+                  gradientColors: features[index]['gradient'] as List<Color>,
+                  onTap:
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => features[index]['screen'] as Widget,
+                        ),
+                      ),
+                  index: index,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFeatureCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required List<Color> gradientColors,
+    required VoidCallback onTap,
+    required int index,
+  }) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered[index] = true),
+      onExit: (_) => setState(() => _isHovered[index] = false),
+      child: TweenAnimationBuilder<double>(
+        duration: const Duration(milliseconds: 200),
+        tween: Tween<double>(begin: 0, end: _isHovered[index] ? 1 : 0),
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: 1 + (value * 0.02),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: gradientColors[1].withOpacity(0.3),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: gradientColors[1].withOpacity(0.1),
+                    offset: Offset(0, 2 + (value * 2)),
+                    blurRadius: 4 + (value * 4),
                   ),
-                  padding: const EdgeInsets.all(10),
-                  child: Icon(
-                    icon,
-                    size: 40,
-                    color: Colors.green[800],
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Stack(
+                    children: [
+                      if (_isHovered[index])
+                        Positioned(
+                          right: 12,
+                          top: 12,
+                          child: Icon(
+                            Icons.arrow_forward,
+                            size: 16,
+                            color: gradientColors[1].withOpacity(0.3),
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            TweenAnimationBuilder<double>(
+                              duration: const Duration(milliseconds: 200),
+                              tween: Tween<double>(
+                                begin: 0,
+                                end: _isHovered[index] ? 1 : 0,
+                              ),
+                              builder: (context, value, child) {
+                                return Transform.rotate(
+                                  angle: value * 0.1,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: gradientColors[1].withOpacity(
+                                          0.2,
+                                        ),
+                                        width: 1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      color: gradientColors[1].withOpacity(
+                                        value * 0.1,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      icon,
+                                      size: 28,
+                                      color: Color.lerp(
+                                        gradientColors[1],
+                                        Colors.white,
+                                        value * 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              title,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[800],
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tap to explore',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: gradientColors[1].withOpacity(0.5),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 20),
-                Flexible(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green[900],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
+
+  Widget _buildAppHighlights() {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.green[50],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green[700]!.withOpacity(0.2)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.auto_awesome, color: Colors.green[700], size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Powered by Advanced AI',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.orange[700]!.withOpacity(0.2),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '15+',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange[700],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Varieties',
+                      style: TextStyle(
+                        color: Colors.orange[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue[700]!.withOpacity(0.2)),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '99%',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[700],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Accuracy',
+                      style: TextStyle(
+                        color: Colors.blue[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// Background pattern painter
+class BackgroundPatternPainter extends CustomPainter {
+  final Color color;
+
+  BackgroundPatternPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = color
+          ..strokeWidth = 1.0
+          ..style = PaintingStyle.fill;
+
+    final spacing = 20.0;
+    for (double i = 0; i < size.width; i += spacing) {
+      for (double j = 0; j < size.height; j += spacing) {
+        canvas.drawCircle(Offset(i, j), 1.0, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(BackgroundPatternPainter oldDelegate) => false;
+}
+
+class LeafPatternPainter extends CustomPainter {
+  final Color color;
+
+  LeafPatternPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = color
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke;
+
+    final path =
+        Path()
+          ..moveTo(size.width * 0.2, size.height * 0.8)
+          ..quadraticBezierTo(
+            size.width * 0.5,
+            size.height * 0.5,
+            size.width * 0.8,
+            size.height * 0.2,
+          )
+          ..quadraticBezierTo(
+            size.width * 0.6,
+            size.height * 0.4,
+            size.width * 0.3,
+            size.height * 0.7,
+          );
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(LeafPatternPainter oldDelegate) => false;
 }

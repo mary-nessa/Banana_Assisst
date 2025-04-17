@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:bananaassist/views/auth_screen.dart';
+import 'package:bananaassist/views/auth/login_screen.dart';
 import 'home_screen.dart';
 
 class MyHomePage extends StatelessWidget {
@@ -29,16 +29,15 @@ class MyHomePage extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [const Color(0xFF1B5E20), const Color(0xFFFBC02D)], // Deep green to Ugandan yellow
+            colors: [
+              const Color(0xFF1B5E20),
+              const Color(0xFFFBC02D),
+            ], // Deep green to Ugandan yellow
           ),
         ),
         child: Stack(
           children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: BackgroundPainter(),
-              ),
-            ),
+            Positioned.fill(child: CustomPaint(painter: BackgroundPainter())),
             SafeArea(
               child: SingleChildScrollView(
                 child: Column(
@@ -83,7 +82,7 @@ class MyHomePage extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const AuthScreen(isLogin: true),
+                          builder: (context) => const LoginScreen(),
                         ),
                       );
                     },
@@ -136,11 +135,7 @@ class MyHomePage extends StatelessWidget {
               ],
             ),
             child: Center(
-              child: Icon(
-                Icons.eco,
-                size: 90,
-                color: const Color(0xFF1B5E20),
-              ),
+              child: Icon(Icons.eco, size: 90, color: const Color(0xFF1B5E20)),
             ),
           ),
           const SizedBox(height: 25),
@@ -178,7 +173,10 @@ class MyHomePage extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.white.withOpacity(0.2), Colors.white.withOpacity(0.05)],
+          colors: [
+            Colors.white.withOpacity(0.2),
+            Colors.white.withOpacity(0.05),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -212,10 +210,16 @@ class MyHomePage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
-            _buildFeatureBullet('Scan your matooke for Bacterial Wilt or Black Sigatoka'),
-            _buildFeatureBullet('Learn about varieties like Mbidde, Ndizi, and Gonja'),
+            _buildFeatureBullet(
+              'Scan your matooke for Bacterial Wilt or Black Sigatoka',
+            ),
+            _buildFeatureBullet(
+              'Learn about varieties like Mbidde, Ndizi, and Gonja',
+            ),
             _buildFeatureBullet('Get alerts for disease risks in your area'),
-            _buildFeatureBullet('Find best practices for Ugandan soils and weather'),
+            _buildFeatureBullet(
+              'Find best practices for Ugandan soils and weather',
+            ),
             _buildFeatureBullet('Connect with local extension officers'),
           ],
         ),
@@ -258,13 +262,14 @@ class MyHomePage extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
         decoration: BoxDecoration(
-          gradient: isOutlined
-              ? null
-              : LinearGradient(
-            colors: [color, color.withOpacity(0.8)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient:
+              isOutlined
+                  ? null
+                  : LinearGradient(
+                    colors: [color, color.withOpacity(0.8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
           color: isOutlined ? Colors.transparent : null,
           border: isOutlined ? Border.all(color: color, width: 2) : null,
           borderRadius: BorderRadius.circular(50),
@@ -293,23 +298,42 @@ class MyHomePage extends StatelessWidget {
 class BackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final Paint paint = Paint()
-      ..style = PaintingStyle.fill;
+    final Paint paint = Paint()..style = PaintingStyle.fill;
 
     // Subtle banana bunch pattern
     paint.color = Colors.white.withOpacity(0.1);
-    canvas.drawCircle(Offset(size.width * 0.9, size.height * 0.3), size.width * 0.25, paint);
-    canvas.drawCircle(Offset(size.width * 0.2, size.height * 0.8), size.width * 0.2, paint);
+    canvas.drawCircle(
+      Offset(size.width * 0.9, size.height * 0.3),
+      size.width * 0.25,
+      paint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.2, size.height * 0.8),
+      size.width * 0.2,
+      paint,
+    );
 
     // Matooke leaf-inspired shape
-    final Paint leafPaint = Paint()
-      ..color = const Color(0xFF1B5E20).withOpacity(0.3)
-      ..style = PaintingStyle.fill;
+    final Paint leafPaint =
+        Paint()
+          ..color = const Color(0xFF1B5E20).withOpacity(0.3)
+          ..style = PaintingStyle.fill;
 
-    final Path leafPath = Path()
-      ..moveTo(size.width * 0.15, size.height * 0.75)
-      ..quadraticBezierTo(size.width * 0.25, size.height * 0.55, size.width * 0.4, size.height * 0.65)
-      ..quadraticBezierTo(size.width * 0.3, size.height * 0.8, size.width * 0.15, size.height * 0.75);
+    final Path leafPath =
+        Path()
+          ..moveTo(size.width * 0.15, size.height * 0.75)
+          ..quadraticBezierTo(
+            size.width * 0.25,
+            size.height * 0.55,
+            size.width * 0.4,
+            size.height * 0.65,
+          )
+          ..quadraticBezierTo(
+            size.width * 0.3,
+            size.height * 0.8,
+            size.width * 0.15,
+            size.height * 0.75,
+          );
     canvas.drawPath(leafPath, leafPaint);
   }
 

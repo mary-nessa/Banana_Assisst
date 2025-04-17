@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'auth_screen.dart';
+import 'auth/login_screen.dart';
 
 class SettingsTab extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -19,40 +19,86 @@ class _SettingsTabState extends State<SettingsTab> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          'Logout',
-          style: TextStyle(
-            color: Theme.of(context).primaryColor,
-            fontWeight: FontWeight.bold,
-          ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
         ),
-        content: const Text('Are you sure you want to log out?'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.logout,
+                color: Colors.red,
+              ),
+            ),
+            const SizedBox(width: 16),
+            const Text(
+              'Logout',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to log out?',
+          style: TextStyle(fontSize: 16),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
             child: Text(
               'Cancel',
-              style: TextStyle(color: Theme.of(context).hintColor),
+              style: TextStyle(
+                color: Theme.of(context).hintColor,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.of(context).pop(); // Close the dialog
+              Navigator.of(context).pop();
               Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const AuthScreen()),
-                    (route) => false,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
               );
               if (widget.onLogout != null) {
                 widget.onLogout!();
               }
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Logged out successfully')),
+                SnackBar(
+                  content: const Text('Logged out successfully'),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor,
+              backgroundColor: Colors.red,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: const Text('Logout'),
+            child: const Text(
+              'Logout',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ],
       ),
@@ -60,30 +106,156 @@ class _SettingsTabState extends State<SettingsTab> {
   }
 
   Widget _buildSectionHeader(String title) {
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       width: double.infinity,
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
             Theme.of(context).primaryColor,
-            Theme.of(context).primaryColor.withOpacity(0.8),
+            Theme.of(context).primaryColor.withOpacity(0.7),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(8),
-          topRight: Radius.circular(8),
+          topLeft: Radius.circular(12),
+          topRight: Radius.circular(12),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).primaryColor.withOpacity(0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Text(
         title,
         style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
           color: Colors.white,
+          letterSpacing: 0.5,
         ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedSwitchTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: value 
+            ? Theme.of(context).primaryColor.withOpacity(0.1)
+            : Colors.transparent,
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).primaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            color: Theme.of(context).primaryColor,
+          ),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+          ),
+        ),
+        trailing: Switch.adaptive(
+          value: value,
+          onChanged: onChanged,
+          activeColor: Theme.of(context).primaryColor,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextSizeSlider() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Theme.of(context).primaryColor.withOpacity(0.1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.text_fields,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                'Text Size',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${(_textSize * 100).toInt()}%',
+                style: TextStyle(
+                  color: Theme.of(context).primaryColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: Theme.of(context).primaryColor,
+              inactiveTrackColor: Theme.of(context).primaryColor.withOpacity(0.2),
+              thumbColor: Theme.of(context).primaryColor,
+              overlayColor: Theme.of(context).primaryColor.withOpacity(0.1),
+              trackHeight: 4,
+            ),
+            child: Slider(
+              value: _textSize,
+              min: 0.8,
+              max: 1.5,
+              divisions: 7,
+              onChanged: (value) {
+                setState(() {
+                  _textSize = value;
+                });
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -91,8 +263,7 @@ class _SettingsTabState extends State<SettingsTab> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: _darkModeEnabled
-          ? ThemeData.dark().copyWith(
+      data: _darkModeEnabled ? ThemeData.dark().copyWith(
         primaryColor: Colors.green[800]!,
         scaffoldBackgroundColor: Colors.grey[900]!,
         cardColor: Colors.grey[850],
@@ -112,10 +283,11 @@ class _SettingsTabState extends State<SettingsTab> {
         ),
         switchTheme: SwitchThemeData(
           thumbColor: WidgetStateProperty.all(Colors.white),
-          trackColor: WidgetStateProperty.all(Colors.green[800]!.withOpacity(0.5)),
+          trackColor: WidgetStateProperty.all(
+            Colors.green[800]!.withOpacity(0.5),
+          ),
         ),
-      )
-          : ThemeData.light().copyWith(
+      ) : ThemeData.light().copyWith(
         primaryColor: Colors.green[800]!,
         scaffoldBackgroundColor: Colors.grey[100]!,
         cardColor: Colors.white,
@@ -135,256 +307,245 @@ class _SettingsTabState extends State<SettingsTab> {
         ),
         switchTheme: SwitchThemeData(
           thumbColor: WidgetStateProperty.all(Colors.white),
-          trackColor: WidgetStateProperty.all(Colors.green[800]!.withOpacity(0.5)),
+          trackColor: WidgetStateProperty.all(
+            Colors.green[800]!.withOpacity(0.5),
+          ),
         ),
       ),
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: ListView(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
           children: [
             // App Settings Card
-            Card(
-              elevation: 4,
-              color: Theme.of(context).cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionHeader('App Settings'),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Column(
-                      children: [
-                        SwitchListTile(
-                          secondary: Icon(
-                            Icons.notifications,
-                            color: Theme.of(context).primaryColor,
-                          ),
-                          title: const Text('Enable Notifications'),
-                          subtitle: const Text('Receive updates and alerts'),
-                          value: _notificationsEnabled,
-                          onChanged: (value) {
-                            setState(() {
-                              _notificationsEnabled = value;
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Notifications ${_notificationsEnabled ? 'enabled' : 'disabled'}',
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.only(bottom: 24.0),
+              child: Card(
+                elevation: 8,
+                shadowColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                color: Theme.of(context).cardColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader('App Settings'),
+                    Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        children: [
+                          _buildAnimatedSwitchTile(
+                            icon: Icons.notifications,
+                            title: 'Enable Notifications',
+                            subtitle: 'Receive updates and alerts',
+                            value: _notificationsEnabled,
+                            onChanged: (value) {
+                              setState(() {
+                                _notificationsEnabled = value;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Notifications ${_notificationsEnabled ? 'enabled' : 'disabled'}'),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                 ),
-                              ),
-                            );
-                          },
-                          activeColor: Theme.of(context).primaryColor,
-                        ),
-                        Divider(color: Theme.of(context).dividerColor),
-                        SwitchListTile(
-                          secondary: Icon(
-                            Icons.dark_mode,
-                            color: Theme.of(context).primaryColor,
+                              );
+                            },
                           ),
-                          title: const Text('Dark Mode'),
-                          subtitle: const Text('Switch to dark theme for better visibility'),
-                          value: _darkModeEnabled,
-                          onChanged: (value) {
-                            setState(() {
-                              _darkModeEnabled = value;
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Dark mode ${_darkModeEnabled ? 'enabled' : 'disabled'}',
+                          const SizedBox(height: 8),
+                          _buildAnimatedSwitchTile(
+                            icon: Icons.dark_mode,
+                            title: 'Dark Mode',
+                            subtitle: 'Switch to dark theme for better visibility',
+                            value: _darkModeEnabled,
+                            onChanged: (value) {
+                              setState(() {
+                                _darkModeEnabled = value;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Dark mode ${_darkModeEnabled ? 'enabled' : 'disabled'}'),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                 ),
-                              ),
-                            );
-                          },
-                          activeColor: Theme.of(context).primaryColor,
-                        ),
-                        Divider(color: Theme.of(context).dividerColor),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.text_fields,
-                                    color: Theme.of(context).primaryColor,
-                                  ),
-                                  const SizedBox(width: 16),
-                                  const Text(
-                                    'Text Size',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                                ],
-                              ),
-                              Expanded(
-                                child: Slider(
-                                  value: _textSize,
-                                  min: 0.8,
-                                  max: 1.5,
-                                  divisions: 7,
-                                  label: _textSize.toStringAsFixed(1),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _textSize = value;
-                                    });
-                                  },
-                                  activeColor: Theme.of(context).primaryColor,
-                                  inactiveColor: Theme.of(context).hintColor,
-                                ),
-                              ),
-                            ],
+                              );
+                            },
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          _buildTextSizeSlider(),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 20),
 
             // Account Card
-            Card(
-              elevation: 4,
-              color: Theme.of(context).cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionHeader('Account'),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Column(
-                      children: [
-                        ListTile(
-                          leading: Icon(
-                            Icons.person,
-                            color: Theme.of(context).primaryColor,
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.only(bottom: 24.0),
+              child: Card(
+                elevation: 8,
+                shadowColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader('Account'),
+                    Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        children: [
+                          _buildSettingsListTile(
+                            icon: Icons.person,
+                            title: 'Profile',
+                            subtitle: 'View and edit your profile details',
+                            onTap: () {
+                              // Navigate to profile page
+                            },
                           ),
-                          title: const Text('Profile'),
-                          subtitle: const Text('View and edit your profile details'),
-                          trailing: Icon(
-                            Icons.chevron_right,
-                            color: Theme.of(context).hintColor,
+                          const SizedBox(height: 8),
+                          _buildSettingsListTile(
+                            icon: Icons.lock,
+                            title: 'Change Password',
+                            subtitle: 'Update your account password',
+                            onTap: () {
+                              // Navigate to change password page
+                            },
                           ),
-                          onTap: () {
-                            // Navigate to profile page
-                          },
-                        ),
-                        Divider(color: Theme.of(context).dividerColor),
-                        ListTile(
-                          leading: Icon(
-                            Icons.lock,
-                            color: Theme.of(context).primaryColor,
+                          const SizedBox(height: 8),
+                          _buildSettingsListTile(
+                            icon: Icons.logout,
+                            title: 'Logout',
+                            subtitle: 'Sign out of your account',
+                            onTap: _showLogoutConfirmationDialog,
+                            isDestructive: true,
                           ),
-                          title: const Text('Change Password'),
-                          subtitle: const Text('Update your account password'),
-                          trailing: Icon(
-                            Icons.chevron_right,
-                            color: Theme.of(context).hintColor,
-                          ),
-                          onTap: () {
-                            // Navigate to change password page
-                          },
-                        ),
-                        Divider(color: Theme.of(context).dividerColor),
-                        ListTile(
-                          leading: const Icon(
-                            Icons.logout,
-                            color: Colors.red,
-                          ),
-                          title: const Text(
-                            'Logout',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                          subtitle: const Text('Sign out of your account'),
-                          trailing: Icon(
-                            Icons.chevron_right,
-                            color: Theme.of(context).hintColor,
-                          ),
-                          onTap: _showLogoutConfirmationDialog,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 20),
 
             // About Card
-            Card(
-              elevation: 4,
-              color: Theme.of(context).cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionHeader('About'),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Column(
-                      children: [
-                        ListTile(
-                          leading: Icon(
-                            Icons.info,
-                            color: Theme.of(context).primaryColor,
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.only(bottom: 24.0),
+              child: Card(
+                elevation: 8,
+                shadowColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader('About'),
+                    Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        children: [
+                          _buildSettingsListTile(
+                            icon: Icons.info,
+                            title: 'App Version',
+                            trailing: Text(
+                              '1.0.0',
+                              style: TextStyle(
+                                color: Theme.of(context).hintColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
-                          title: const Text('App Version'),
-                          trailing: Text(
-                            '1.0.0',
-                            style: TextStyle(color: Theme.of(context).hintColor),
+                          const SizedBox(height: 8),
+                          _buildSettingsListTile(
+                            icon: Icons.description,
+                            title: 'Terms of Service',
+                            subtitle: 'Read our terms and conditions',
+                            onTap: () {
+                              // Navigate to terms page
+                            },
                           ),
-                        ),
-                        Divider(color: Theme.of(context).dividerColor),
-                        ListTile(
-                          leading: Icon(
-                            Icons.description,
-                            color: Theme.of(context).primaryColor,
+                          const SizedBox(height: 8),
+                          _buildSettingsListTile(
+                            icon: Icons.privacy_tip,
+                            title: 'Privacy Policy',
+                            subtitle: 'Understand how we handle your data',
+                            onTap: () {
+                              // Navigate to privacy policy page
+                            },
                           ),
-                          title: const Text('Terms of Service'),
-                          subtitle: const Text('Read our terms and conditions'),
-                          trailing: Icon(
-                            Icons.chevron_right,
-                            color: Theme.of(context).hintColor,
-                          ),
-                          onTap: () {
-                            // Navigate to terms page
-                          },
-                        ),
-                        Divider(color: Theme.of(context).dividerColor),
-                        ListTile(
-                          leading: Icon(
-                            Icons.privacy_tip,
-                            color: Theme.of(context).primaryColor,
-                          ),
-                          title: const Text('Privacy Policy'),
-                          subtitle: const Text('Understand how we handle your data'),
-                          trailing: Icon(
-                            Icons.chevron_right,
-                            color: Theme.of(context).hintColor,
-                          ),
-                          onTap: () {
-                            // Navigate to privacy policy page
-                          },
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsListTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
+    bool isDestructive = false,
+  }) {
+    final Color iconColor = isDestructive 
+        ? Colors.red 
+        : Theme.of(context).primaryColor;
+    
+    final TextStyle titleStyle = TextStyle(
+      color: isDestructive ? Colors.red : null,
+      fontWeight: FontWeight.w500,
+      fontSize: 16,
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4.0),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: iconColor),
+            ),
+            title: Text(title, style: titleStyle),
+            subtitle: subtitle != null 
+                ? Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                  )
+                : null,
+            trailing: trailing ?? (onTap != null 
+                ? Icon(
+                    Icons.chevron_right,
+                    color: Theme.of(context).hintColor,
+                  )
+                : null),
+          ),
         ),
       ),
     );
