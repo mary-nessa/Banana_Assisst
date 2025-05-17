@@ -17,6 +17,9 @@ class _DiseaseDetectionScreenState extends State<DiseaseDetectionScreen>
   @override
   String get apiEndpoint => '${dotenv.env['BACKEND_URL']}/api/diagnoses';
 
+  // In DiseaseDetectionScreen class
+// Update the _analyzeImage method:
+
   Future<void> _analyzeImage() async {
     if (imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -30,25 +33,30 @@ class _DiseaseDetectionScreenState extends State<DiseaseDetectionScreen>
     setState(() => _diseaseLevel = null);
 
     try {
-      final analysisResult =
-          authToken != null
-              ? await createWithAuth(imageFile)
-              : await analyzeWithoutAuth(imageFile);
+      final analysisResult = authToken != null
+          ? await createWithAuth(imageFile)
+          : await analyzeWithoutAuth(imageFile);
 
       setLoading(false);
-      setState(() => _diseaseLevel = analysisResult['diseaseLevel']);
+
+      // Safely handle secondaryFindings
+      dynamic secondaryFindings = analysisResult['secondaryFindings'];
+      if (secondaryFindings is! Map<String, dynamic>) {
+        secondaryFindings = {'severity': 'N/A', 'affectedArea': 'N/A'};
+      }
+      final severity = (secondaryFindings as Map<String, dynamic>?)?['severity'] as String? ?? 'N/A';
+      final affectedArea = (secondaryFindings as Map<String, dynamic>?)?['affectedArea'] as String? ?? 'N/A';
+
+      setState(() => _diseaseLevel = severity);
+
       setAnalysisResult(
-        '''${analysisResult['result']} 
-Confidence: ${analysisResult['confidenceLevel']}%
-
-Description: ${analysisResult['description'] ?? ''}
-Disease Level: ${analysisResult['diseaseLevel'] ?? 'Unknown'}
-
-Treatment:
-${analysisResult['treatment'] ?? '• No specific treatment available'}
-
-Processing Time: ${analysisResult['processingTime']}ms
-${authToken == null ? 'Remaining Attempts: ${analysisResult['remainingAttempts']}\n' : ''}''',
+        '''
+Disease Name: ${analysisResult['diseaseName'] ?? 'Unknown'}
+Confidence Level: ${analysisResult['confidenceLevel'] ?? 'N/A'}%
+Processing Time: ${analysisResult['processingTime'] ?? 'N/A'}ms
+Severity: $severity
+Affected Area: $affectedArea
+''',
       );
     } catch (e) {
       setLoading(false);
@@ -66,12 +74,12 @@ ${authToken == null ? 'Remaining Attempts: ${analysisResult['remainingAttempts']
     switch (diseaseName.toLowerCase()) {
       case 'healthy':
         return Colors.green;
-      case 'severe':
+      case 'high':
       case 'critical':
         return Colors.red[800]!;
       case 'moderate':
         return Colors.orange[800]!;
-      case 'early':
+      case 'low':
       case 'mild':
         return Colors.amber[800]!;
       default:
@@ -168,18 +176,17 @@ ${authToken == null ? 'Remaining Attempts: ${analysisResult['remainingAttempts']
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             minimumSize: const Size(double.infinity, 40),
                           ),
-                          child:
-                              isLoading
-                                  ? const CircularProgressIndicator(
-                                    color: Colors.white,
-                                  )
-                                  : const Text(
-                                    'Analyze Image',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                          child: isLoading
+                              ? const CircularProgressIndicator(
+                            color: Colors.white,
+                          )
+                              : const Text(
+                            'Analyze Image',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ],
                     ),

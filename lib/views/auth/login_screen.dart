@@ -5,6 +5,7 @@ import '../home_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:bananaassist/utils/secure_storage.dart';
 import 'registration_screen.dart';
+import 'package:uuid/uuid.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -66,40 +67,126 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder:
-                (context) => MainScreen(
-                  userName: userName,
-                  onLogout: () async {
-                    await SecureStorage.clearAll();
-                    if (!mounted) return;
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const LoginScreen(),
-                      ),
-                    );
-                  },
-                ),
+            builder: (context) => MainScreen(
+              userName: userName,
+              onLogout: () async {
+                await SecureStorage.clearAll();
+                if (!mounted) return;
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LoginScreen(),
+                  ),
+                );
+              },
+            ),
           ),
         );
 
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Login successful!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Login successful!')),
+        );
       } else {
         throw Exception(
           'Login failed with status ${response.statusCode}: ${response.body}',
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _continueAsGuest() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Generate and store a guest device ID if not already present
+      String? deviceId = await SecureStorage.getDeviceId();
+      if (deviceId == null) {
+        deviceId = const Uuid().v4();
+        await SecureStorage.storeDeviceId(deviceId);
+      }
+
+      // Check local attempt count
+      int attempts = await SecureStorage.getGuestAttempts();
+      if (attempts >= 3) {
+        _showSignupPrompt();
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Navigate to MainScreen as a guest
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MainScreen(
+            userName: 'Guest',
+            onLogout: () async {
+              await SecureStorage.clearAll();
+              if (!mounted) return;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LoginScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Continuing as guest.')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showSignupPrompt() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Free Trial Ended'),
+          content: const Text(
+            'You have reached the limit of free attempts. Sign up to continue using all features!',
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            TextButton(
+              child: const Text('Sign Up'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const RegistrationScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -152,9 +239,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _usernameController,
                         label: 'Username',
                         icon: Icons.person,
-                        validator:
-                            (value) =>
-                                value!.isEmpty ? 'Enter your username' : null,
+                        validator: (value) =>
+                        value!.isEmpty ? 'Enter your username' : null,
                       ),
                       const SizedBox(height: 15),
                       _buildTextField(
@@ -162,9 +248,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         label: 'Password',
                         icon: Icons.lock,
                         obscureText: !_isPasswordVisible,
-                        validator:
-                            (value) =>
-                                value!.isEmpty ? 'Enter your password' : null,
+                        validator: (value) =>
+                        value!.isEmpty ? 'Enter your password' : null,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isPasswordVisible
@@ -182,6 +267,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 _buildButton(
                   text: 'Sign In',
                   onPressed: _login,
+                  isLoading: _isLoading,
+                ),
+                const SizedBox(height: 15),
+                _buildButton(
+                  text: 'Continue as Guest',
+                  onPressed: _continueAsGuest,
                   isLoading: _isLoading,
                 ),
                 const SizedBox(height: 20),
@@ -270,23 +361,22 @@ class _LoginScreenState extends State<LoginScreen> {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        child:
-            isLoading
-                ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-                : Text(
-                  text,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+        child: isLoading
+            ? const SizedBox(
+          height: 20,
+          width: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        )
+            : Text(
+          text,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }

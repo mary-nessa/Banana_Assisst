@@ -1,17 +1,21 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
 import 'package:bananaassist/views/auth/registration_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:bananaassist/utils/secure_storage.dart';
+import 'package:uuid/uuid.dart';
+import 'package:device_info_plus/device_info_plus.dart'; // Added import for device_info_plus
 
 mixin ImageAnalysisMixin<T extends StatefulWidget> on State<T> {
   final ImagePicker _picker = ImagePicker();
-  dynamic _imageFile;
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin(); // Instantiate DeviceInfoPlugin
+  XFile? _imageFile;
   bool _isLoading = false;
   String? _analysisResult;
   String? _authToken;
@@ -22,6 +26,7 @@ mixin ImageAnalysisMixin<T extends StatefulWidget> on State<T> {
   void initState() {
     super.initState();
     _loadAuthToken();
+    _loadAttempts();
   }
 
   Future<void> _loadAuthToken() async {
@@ -31,15 +36,29 @@ mixin ImageAnalysisMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  // Getter methods
+  Future<void> _loadAttempts() async {
+    if (_authToken != null) {
+      setState(() {
+        _remainingAttempts = 0;
+        _requiresSignup = false;
+      });
+      return;
+    }
+
+    int attempts = await SecureStorage.getGuestAttempts() ?? 0;
+    setState(() {
+      _remainingAttempts = 3 - attempts;
+      _requiresSignup = attempts >= 3;
+    });
+  }
+
   bool get isLoading => _isLoading;
   String? get analysisResult => _analysisResult;
   bool get requiresSignup => _requiresSignup;
   int get remainingAttempts => _remainingAttempts;
   String? get authToken => _authToken;
-  dynamic get imageFile => _imageFile;
+  XFile? get imageFile => _imageFile;
 
-  // State management methods
   void setLoading(bool value) {
     setState(() => _isLoading = value);
   }
@@ -89,90 +108,115 @@ mixin ImageAnalysisMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  Future<Map<String, dynamic>> createWithAuth(XFile imageFile) async {
+  // Helper method to get Android version
+  Future<int> _getAndroidVersion() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await _deviceInfo.androidInfo; // Use the instance
+      return androidInfo.version.sdkInt ?? 0;
+    }
+    return 0;
+  }
+
+  Future<Map<String, dynamic>> createWithAuth(XFile? imageFile) async {
     if (_authToken == null) {
       throw Exception('No auth token available');
     }
+    if (imageFile == null) {
+      throw Exception('No image file provided');
+    }
+
     final uri = Uri.parse('$apiEndpoint/create');
     final userId = await SecureStorage.getUserId();
     if (userId == null) {
       throw Exception('No userId available');
     }
 
-    final request =
-        http.MultipartRequest('POST', uri)
-          ..files.add(
-            await http.MultipartFile.fromPath(
-              'imageFile',
-              imageFile.path,
-              contentType: MediaType('image', 'jpeg'),
-            ),
-          )
-          ..fields['userId'] = userId
-          ..headers['Authorization'] = 'Bearer $_authToken';
+    final request = http.MultipartRequest('POST', uri)
+      ..files.add(
+        await http.MultipartFile.fromPath(
+          'imageFile',
+          imageFile.path,
+          contentType: MediaType('image', 'jpeg'),
+        ),
+      )
+      ..fields['userId'] = userId
+      ..headers['Authorization'] = 'Bearer $_authToken';
 
     final response = await request.send();
     final responseData = await response.stream.bytesToString();
 
     if (response.statusCode == 200 || response.statusCode == 201) {
       try {
-        return jsonDecode(responseData);
+        return jsonDecode(responseData) as Map<String, dynamic>;
       } catch (e) {
-        throw Exception('Invalid JSON response: $e');
+        throw Exception('Invalid JSON response: $e - Raw data: $responseData');
       }
     } else if (response.statusCode == 401) {
       setState(() => _authToken = null);
       await SecureStorage.deleteToken();
       throw Exception('Authentication required');
     } else {
-      throw Exception('Upload failed with status: ${response.statusCode}');
+      throw Exception('Upload failed with status: ${response.statusCode} - $responseData');
     }
   }
 
-  Future<Map<String, dynamic>> analyzeWithoutAuth(XFile imageFile) async {
+  Future<Map<String, dynamic>> analyzeWithoutAuth(XFile? imageFile) async {
+    if (imageFile == null) {
+      throw Exception('No image file provided');
+    }
+
     final uri = Uri.parse('$apiEndpoint/analyze');
     final deviceId = await getDeviceId();
 
-    var request =
-        http.MultipartRequest('POST', uri)
-          ..files.add(
-            await http.MultipartFile.fromPath(
-              'imageFile',
-              imageFile.path,
-              contentType: MediaType('image', 'jpeg'),
-            ),
-          )
-          ..fields['deviceId'] = deviceId;
+    final request = http.MultipartRequest('POST', uri)
+      ..files.add(
+        await http.MultipartFile.fromPath(
+          'imageFile',
+          imageFile.path,
+          contentType: MediaType('image', 'jpeg'),
+        ),
+      )
+      ..fields['deviceId'] = deviceId;
 
     final response = await request.send();
     final responseData = await response.stream.bytesToString();
 
     if (response.statusCode == 200) {
       try {
-        final json = jsonDecode(responseData);
-        final requiresSignup = json['requiresSignup'] ?? false;
-        final remainingAttempts = json['remainingAttempts'] ?? 0;
+        final result = jsonDecode(responseData) as Map<String, dynamic>;
 
+        int attempts = await SecureStorage.getGuestAttempts() ?? 0;
+        attempts += 1;
+        await SecureStorage.storeGuestAttempts(attempts);
         setState(() {
-          _remainingAttempts = remainingAttempts;
-          _requiresSignup = requiresSignup;
+          _remainingAttempts = 3 - attempts;
+          _requiresSignup = attempts >= 3;
         });
 
-        if (requiresSignup) {
+        if (_requiresSignup) {
           showSignupPrompt();
+          return {
+            'error': 'Trial limit reached',
+            'requiresSignup': true,
+            'remainingAttempts': 0,
+          };
         }
-
-        return json;
+        return result;
       } catch (e) {
-        throw Exception('Invalid JSON response: $e');
+        throw Exception('Invalid JSON response: $e - Raw data: $responseData');
       }
     } else {
-      throw Exception('Analysis failed with status: ${response.statusCode}');
+      throw Exception('Analyze failed with status: ${response.statusCode} - $responseData');
     }
   }
 
   Future<String> getDeviceId() async {
-    return 'device-${DateTime.now().millisecondsSinceEpoch}';
+    String? deviceId = await SecureStorage.getDeviceId();
+    if (deviceId == null) {
+      deviceId = const Uuid().v4();
+      await SecureStorage.storeDeviceId(deviceId);
+    }
+    return deviceId;
   }
 
   void showSignupPrompt() {
@@ -236,13 +280,26 @@ mixin ImageAnalysisMixin<T extends StatefulWidget> on State<T> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child:
-              kIsWeb
-                  ? Image.network((_imageFile as XFile).path, fit: BoxFit.cover)
+          child: FutureBuilder<Uint8List>(
+            future: _imageFile!.readAsBytes(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const Center(child: Text('Error loading image'));
+              }
+              return kIsWeb
+                  ? Image.memory(
+                snapshot.data!,
+                fit: BoxFit.cover,
+              )
                   : Image.file(
-                    File((_imageFile as XFile).path),
-                    fit: BoxFit.cover,
-                  ),
+                File(_imageFile!.path),
+                fit: BoxFit.cover,
+              );
+            },
+          ),
         ),
         Positioned(
           top: 5,
@@ -258,7 +315,7 @@ mixin ImageAnalysisMixin<T extends StatefulWidget> on State<T> {
   }
 
   Widget buildAttemptsCounter() {
-    if (_requiresSignup) return const SizedBox.shrink();
+    if (_authToken != null || _requiresSignup) return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -284,6 +341,5 @@ mixin ImageAnalysisMixin<T extends StatefulWidget> on State<T> {
     );
   }
 
-  // Abstract method to be implemented by child classes
   String get apiEndpoint;
 }

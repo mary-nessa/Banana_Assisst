@@ -5,6 +5,8 @@ class SecureStorage {
   static const _tokenKey = 'auth_token';
   static const _userNameKey = 'user_name';
   static const _userIdKey = 'user_id';
+  static const _deviceIdKey = 'device_id';
+  static const _guestAttemptsKey = 'guest_attempts'; // New key for attempt count
 
   static Future<void> storeToken(String token) async {
     await _storage.write(key: _tokenKey, value: token);
@@ -32,6 +34,25 @@ class SecureStorage {
 
   static Future<String?> getUserId() async {
     return await _storage.read(key: _userIdKey);
+  }
+
+  static Future<void> storeDeviceId(String deviceId) async {
+    await _storage.write(key: _deviceIdKey, value: deviceId);
+  }
+
+  static Future<String?> getDeviceId() async {
+    return await _storage.read(key: _deviceIdKey);
+  }
+
+  // New method to store guest attempt count
+  static Future<void> storeGuestAttempts(int attempts) async {
+    await _storage.write(key: _guestAttemptsKey, value: attempts.toString());
+  }
+
+  // New method to retrieve guest attempt count
+  static Future<int> getGuestAttempts() async {
+    final attemptsString = await _storage.read(key: _guestAttemptsKey);
+    return int.tryParse(attemptsString ?? '0') ?? 0;
   }
 
   static Future<void> clearAll() async {

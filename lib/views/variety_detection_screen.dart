@@ -12,8 +12,13 @@ class VarietyDetectionScreen extends StatefulWidget {
 
 class _VarietyDetectionScreenState extends State<VarietyDetectionScreen>
     with ImageAnalysisMixin {
+  String? _maturityLevel;
+
   @override
   String get apiEndpoint => '${dotenv.env['BACKEND_URL']}/api/varieties';
+
+  // In VarietyDetectionScreen class
+// Update the _analyzeImage method:
 
   Future<void> _analyzeImage() async {
     if (imageFile == null) {
@@ -28,25 +33,44 @@ class _VarietyDetectionScreenState extends State<VarietyDetectionScreen>
 
     setLoading(true);
     setAnalysisResult(null);
+    setState(() => _maturityLevel = null);
 
     try {
-      final analysisResult =
-          authToken != null
-              ? await createWithAuth(imageFile)
-              : await analyzeWithoutAuth(imageFile);
+      final analysisResult = authToken != null
+          ? await createWithAuth(imageFile)
+          : await analyzeWithoutAuth(imageFile);
 
       setLoading(false);
+      if (analysisResult.containsKey('error')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(analysisResult['error']),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Safely handle secondaryFindings
+      dynamic secondaryFindings = analysisResult['secondaryFindings'];
+      if (secondaryFindings is! Map<String, dynamic>) {
+        secondaryFindings = {'maturity': 'N/A', 'characteristics': ['N/A']};
+      }
+      final maturity = (secondaryFindings as Map<String, dynamic>?)?['maturity'] as String? ?? 'N/A';
+      final characteristicsList = (secondaryFindings as Map<String, dynamic>?)?['characteristics'] as List<dynamic>? ?? ['N/A'];
+      final characteristics = characteristicsList.isNotEmpty ? characteristicsList.join(', ') : 'N/A';
+
+      setState(() => _maturityLevel = maturity);
+
       setAnalysisResult(
-        '''Variety: ${analysisResult['result']} 
-        Confidence: ${analysisResult['confidenceLevel']}%
-        
-        ${analysisResult['description'] ?? ''}
-        
-        Characteristics:
-        ${analysisResult['characteristics'] ?? '• No characteristics available'}
-        
-        Processing Time: ${analysisResult['processingTime']}ms
-        ${authToken == null ? 'Remaining Attempts: ${analysisResult['remainingAttempts']}\n' : ''}''',
+        '''
+Variety Name: ${analysisResult['varietyName'] ?? 'Unknown'}
+Confidence Level: ${analysisResult['confidenceLevel'] ?? 'N/A'}%
+Processing Time: ${analysisResult['processingTime'] ?? 'N/A'}ms
+Maturity: $maturity
+Characteristics: $characteristics
+${authToken == null ? 'Remaining Attempts: ${analysisResult['remainingAttempts'] ?? 'N/A'}\n' : ''}
+''',
       );
     } catch (e) {
       setLoading(false);
@@ -56,6 +80,20 @@ class _VarietyDetectionScreenState extends State<VarietyDetectionScreen>
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  Color _getMaturityColor(String? maturity) {
+    if (maturity == null) return Colors.grey;
+    switch (maturity.toLowerCase()) {
+      case 'ripe':
+        return Colors.green;
+      case 'overripe':
+        return Colors.red[800]!;
+      case 'unripe':
+        return Colors.yellow[700]!;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -149,18 +187,17 @@ class _VarietyDetectionScreenState extends State<VarietyDetectionScreen>
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             minimumSize: const Size(double.infinity, 40),
                           ),
-                          child:
-                              isLoading
-                                  ? const CircularProgressIndicator(
-                                    color: Colors.white,
-                                  )
-                                  : const Text(
-                                    'Identify Variety',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                          child: isLoading
+                              ? const CircularProgressIndicator(
+                            color: Colors.white,
+                          )
+                              : const Text(
+                            'Identify Variety',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -185,9 +222,38 @@ class _VarietyDetectionScreenState extends State<VarietyDetectionScreen>
                         buildAttemptsCounter(),
                         if (analysisResult != null) ...[
                           const SizedBox(height: 8),
-                          Text(
-                            analysisResult!,
-                            style: const TextStyle(fontSize: 14),
+                          Card(
+                            color: Colors.white,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 40,
+                                        color: _getMaturityColor(_maturityLevel),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'Variety Results',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    analysisResult!,
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ],
                         const SizedBox(height: 8),
