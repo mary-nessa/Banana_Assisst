@@ -2,14 +2,24 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:bananaassist/utils/secure_storage.dart';
 import 'package:intl/intl.dart';
-import 'package:http/io_client.dart';
+import 'package:uuid/uuid.dart';
+import 'package:bananaassist/utils/secure_storage.dart';
+
+// KeepAlive wrapper to maintain tab state
+class KeepAliveTab extends StatelessWidget {
+  final Widget child;
+  const KeepAliveTab({Key? key, required this.child}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return child;
+  }
+}
 
 class BananaPlantingScreen extends StatefulWidget {
-  final String? authToken; // Added authToken parameter
+  final String? authToken;
   const BananaPlantingScreen({Key? key, this.authToken}) : super(key: key);
 
   @override
@@ -18,11 +28,24 @@ class BananaPlantingScreen extends StatefulWidget {
 
 class _BananaPlantingScreenState extends State<BananaPlantingScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  String? userRole;
+  final GlobalKey<PlantingDetailsTabState> _plantingDetailsKey = GlobalKey<PlantingDetailsTabState>();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
+    _checkAuth();
+    print('BananaPlantingScreen initialized');
+  }
+
+  Future<void> _checkAuth() async {
+    final authToken = widget.authToken ?? await SecureStorage().read('authToken');
+    final storedUserRole = await SecureStorage().read('userRole');
+
+    setState(() {
+      userRole = storedUserRole;
+    });
   }
 
   @override
@@ -37,23 +60,23 @@ class _BananaPlantingScreenState extends State<BananaPlantingScreen> with Single
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
-            expandedHeight: 200.0,
+            expandedHeight: 150.0,
             floating: false,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
               title: const Text(
-                'Banana Planting Guide',
+                'Plantation Management',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 20,
+                  fontSize: 18,
                 ),
               ),
               background: Stack(
                 fit: StackFit.expand,
                 children: [
                   Image.network(
-                    'https://images.unsplash.com/photo-1591955506264-3f5a6834570a?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80',
+                    'https://images.unsplash.com/photo-1602777650437-1ef7bc95e6db?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80',
                     fit: BoxFit.cover,
                   ),
                   Container(
@@ -80,6 +103,7 @@ class _BananaPlantingScreenState extends State<BananaPlantingScreen> with Single
                 Tab(text: 'Create Planting'),
                 Tab(text: 'Active Plantings'),
                 Tab(text: 'Planting Details'),
+                Tab(text: 'Tasks'),
               ],
             ),
           ),
@@ -87,9 +111,10 @@ class _BananaPlantingScreenState extends State<BananaPlantingScreen> with Single
         body: TabBarView(
           controller: _tabController,
           children: [
-            CreatePlantingTab(authToken: widget.authToken),
-            ActivePlantingTab(authToken: widget.authToken), // Corrected typo from previous response
-            PlantingDetailsTab(authToken: widget.authToken),
+            KeepAliveTab(child: CreatePlantingTab(authToken: widget.authToken)),
+            KeepAliveTab(child: ActivePlantingTab(authToken: widget.authToken, tabController: _tabController, plantingDetailsKey: _plantingDetailsKey)),
+            KeepAliveTab(child: PlantingDetailsTab(authToken: widget.authToken, key: _plantingDetailsKey)),
+            KeepAliveTab(child: TasksTab(authToken: widget.authToken)),
           ],
         ),
       ),
@@ -106,40 +131,76 @@ class CreatePlantingTab extends StatefulWidget {
   State<CreatePlantingTab> createState() => _CreatePlantingTabState();
 }
 
-class _CreatePlantingTabState extends State<CreatePlantingTab> {
+class _CreatePlantingTabState extends State<CreatePlantingTab> with AutomaticKeepAliveClientMixin {
   final _formKey = GlobalKey<FormState>();
   final _plotIdentifierController = TextEditingController();
-  final _numberOfPlantsController = TextEditingController();
-  final _bananaVarietyController = TextEditingController();
-  DateTime? _plantingDate;
+  final _numberOfPlantsController = TextEditingController(text: '100');
+  final _taskDescriptionController = TextEditingController();
+  String _bananaVariety = 'Gonja';
+  String _currentStage = 'LAND_PREPARATION';
+  DateTime? _plantingDate = DateTime.now();
+  DateTime? _expectedHarvestDate;
+  DateTime? _taskDueDate;
+  String _taskPriority = 'HIGH';
   bool _isLoading = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   Future<void> _createPlanting() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final authToken = widget.authToken ?? await SecureStorage().read('authToken');
+    if (authToken == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must be signed in to create a planting')),
+      );
+      Navigator.pushReplacementNamed(context, '/auth/signin');
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      final httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 5);
-      final client = IOClient(httpClient);
-
+      final plantingId = const Uuid().v4();
+      final taskId = const Uuid().v4();
       final uri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/plantings');
       final headers = <String, String>{
         'Content-Type': 'application/json',
-        if (widget.authToken != null) 'Authorization': 'Bearer ${widget.authToken}',
+        'Authorization': 'Bearer $authToken',
       };
 
       final body = {
+        'id': plantingId,
         'plotIdentifier': _plotIdentifierController.text,
-        'plantingDate': _plantingDate != null
-            ? DateFormat('yyyy-MM-dd').format(_plantingDate!)
-            : DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        'plantingDate': DateFormat('yyyy-MM-dd').format(_plantingDate!),
+        'expectedHarvestDate': _expectedHarvestDate != null
+            ? DateFormat('yyyy-MM-dd').format(_expectedHarvestDate!)
+            : null,
+        'currentStage': _currentStage,
+        'daysFromPlanting': 0,
         'numberOfPlants': int.parse(_numberOfPlantsController.text),
-        'bananaVariety': _bananaVarietyController.text,
+        'bananaVariety': _bananaVariety,
+        'upcomingTasks': [
+          {
+            'id': taskId,
+            'description': _taskDescriptionController.text,
+            'dueDate': _taskDueDate != null
+                ? DateFormat('yyyy-MM-dd').format(_taskDueDate!)
+                : null,
+            'status': 'PENDING',
+            'priority': _taskPriority,
+            'category': _currentStage,
+            'plantingId': plantingId,
+            'plotIdentifier': _plotIdentifierController.text,
+          }
+        ],
+        'completedTasksCount': 0,
+        'totalTasksCount': 1,
+        'progressPercentage': 0.0,
       };
 
-      final response = await client.post(
+      final response = await http.post(
         uri,
         headers: headers,
         body: jsonEncode(body),
@@ -150,11 +211,18 @@ class _CreatePlantingTabState extends State<CreatePlantingTab> {
           const SnackBar(content: Text('Planting created successfully!')),
         );
         _plotIdentifierController.clear();
-        _numberOfPlantsController.clear();
-        _bananaVarietyController.clear();
-        setState(() => _plantingDate = null);
+        _numberOfPlantsController.text = '100';
+        _taskDescriptionController.clear();
+        setState(() {
+          _bananaVariety = 'Gonja';
+          _currentStage = 'LAND_PREPARATION';
+          _plantingDate = DateTime.now();
+          _expectedHarvestDate = null;
+          _taskDueDate = null;
+          _taskPriority = 'HIGH';
+        });
       } else {
-        throw Exception('Failed to create planting: ${response.statusCode}');
+        throw Exception('Failed to create planting: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -169,12 +237,13 @@ class _CreatePlantingTabState extends State<CreatePlantingTab> {
   void dispose() {
     _plotIdentifierController.dispose();
     _numberOfPlantsController.dispose();
-    _bananaVarietyController.dispose();
+    _taskDescriptionController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Form(
@@ -189,46 +258,17 @@ class _CreatePlantingTabState extends State<CreatePlantingTab> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                prefixIcon: const Icon(Icons.map),
               ),
               validator: (value) =>
               value == null || value.isEmpty ? 'Please enter a plot identifier' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _numberOfPlantsController,
-              decoration: InputDecoration(
-                labelText: 'Number of Plants',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              keyboardType: TextInputType.number,
-              validator: (value) {
-                if (value == null || value.isEmpty) return 'Please enter the number of plants';
-                if (int.tryParse(value) == null || int.parse(value) <= 0) {
-                  return 'Please enter a valid number';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _bananaVarietyController,
-              decoration: InputDecoration(
-                labelText: 'Banana Variety',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              validator: (value) =>
-              value == null || value.isEmpty ? 'Please enter a banana variety' : null,
             ),
             const SizedBox(height: 16),
             GestureDetector(
               onTap: () async {
                 final pickedDate = await showDatePicker(
                   context: context,
-                  initialDate: DateTime.now(),
+                  initialDate: _plantingDate ?? DateTime.now(),
                   firstDate: DateTime(2000),
                   lastDate: DateTime(2030),
                 );
@@ -256,6 +296,167 @@ class _CreatePlantingTabState extends State<CreatePlantingTab> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () async {
+                final pickedDate = await showDatePicker(
+                  context: context,
+                  initialDate: _expectedHarvestDate ?? DateTime.now(),
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime(2030),
+                );
+                if (pickedDate != null) {
+                  setState(() => _expectedHarvestDate = pickedDate);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.event, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text(
+                      _expectedHarvestDate != null
+                          ? DateFormat('yyyy-MM-dd').format(_expectedHarvestDate!)
+                          : 'Select Expected Harvest Date',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _numberOfPlantsController,
+              decoration: InputDecoration(
+                labelText: 'Number of Plants',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.local_florist),
+              ),
+              keyboardType: TextInputType.number,
+              validator: (value) {
+                if (value == null || value.isEmpty) return 'Please enter the number of plants';
+                if (int.tryParse(value) == null || int.parse(value) <= 0) {
+                  return 'Please enter a valid number';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _bananaVariety,
+              decoration: InputDecoration(
+                labelText: 'Banana Variety',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.eco),
+              ),
+              items: ['Gonja', 'Cavendish', 'Sukali Ndizi', 'Matooke']
+                  .map((variety) => DropdownMenuItem(
+                value: variety,
+                child: Text(variety),
+              ))
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _bananaVariety = value!);
+              },
+              validator: (value) => value == null ? 'Please select a banana variety' : null,
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _currentStage,
+              decoration: InputDecoration(
+                labelText: 'Current Stage',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.trending_up),
+              ),
+              items: ['LAND_PREPARATION', 'PLANTING', 'GROWING', 'HARVESTING']
+                  .map((stage) => DropdownMenuItem(
+                value: stage,
+                child: Text(stage.replaceAll('_', ' ')),
+              ))
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _currentStage = value!);
+              },
+              validator: (value) => value == null ? 'Please select a stage' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _taskDescriptionController,
+              decoration: InputDecoration(
+                labelText: 'Initial Task Description',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.task),
+              ),
+              validator: (value) =>
+              value == null || value.isEmpty ? 'Please enter a task description' : null,
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () async {
+                final pickedDate = await showDatePicker(
+                  context: context,
+                  initialDate: _taskDueDate ?? DateTime.now(),
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime(2030),
+                );
+                if (pickedDate != null) {
+                  setState(() => _taskDueDate = pickedDate);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text(
+                      _taskDueDate != null
+                          ? DateFormat('yyyy-MM-dd').format(_taskDueDate!)
+                          : 'Select Task Due Date',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _taskPriority,
+              decoration: InputDecoration(
+                labelText: 'Task Priority',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.priority_high),
+              ),
+              items: ['HIGH', 'MEDIUM', 'LOW']
+                  .map((priority) => DropdownMenuItem(
+                value: priority,
+                child: Text(priority),
+              ))
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _taskPriority = value!);
+              },
+              validator: (value) => value == null ? 'Please select a priority' : null,
+            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isLoading ? null : _createPlanting,
@@ -265,14 +466,13 @@ class _CreatePlantingTabState extends State<CreatePlantingTab> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                minimumSize: const Size(double.infinity, 50),
               ),
-              child: Center(
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text(
-                  'Create Planting',
-                  style: TextStyle(fontSize: 16, color: Colors.white),
-                ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text(
+                'Create Planting',
+                style: TextStyle(fontSize: 16, color: Colors.white),
               ),
             ),
           ],
@@ -283,154 +483,291 @@ class _CreatePlantingTabState extends State<CreatePlantingTab> {
 }
 
 // Tab 2: Active Plantings
-class ActivePlantingTab extends StatefulWidget { // Corrected typo from previous response
+class ActivePlantingTab extends StatefulWidget {
   final String? authToken;
-  const ActivePlantingTab({Key? key, this.authToken}) : super(key: key);
+  final TabController tabController;
+  final GlobalKey<PlantingDetailsTabState> plantingDetailsKey;
+  const ActivePlantingTab({Key? key, this.authToken, required this.tabController, required this.plantingDetailsKey}) : super(key: key);
 
   @override
   State<ActivePlantingTab> createState() => _ActivePlantingTabState();
 }
 
-class _ActivePlantingTabState extends State<ActivePlantingTab> {
+class _ActivePlantingTabState extends State<ActivePlantingTab> with AutomaticKeepAliveClientMixin {
   List<dynamic> _plantings = [];
   bool _isLoading = true;
   String? _error;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _fetchActivePlantings();
+    print('ActivePlantingTab initialized');
   }
 
   Future<void> _fetchActivePlantings() async {
+    final authToken = widget.authToken ?? await SecureStorage().read('authToken');
+    if (authToken == null) {
+      Navigator.pushReplacementNamed(context, '/auth/signin');
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      final httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 5);
-      final client = IOClient(httpClient);
-
       final uri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/plantings/active');
       final headers = <String, String>{
         'Content-Type': 'application/json',
-        if (widget.authToken != null) 'Authorization': 'Bearer ${widget.authToken}',
+        'Authorization': 'Bearer $authToken',
       };
 
-      final response = await client.get(uri, headers: headers);
+      final response = await http.get(uri, headers: headers);
+
+      print('Active plantings response status: ${response.statusCode}');
+      print('Active plantings response body: ${response.body}');
 
       if (response.statusCode == 200) {
         setState(() {
           _plantings = jsonDecode(response.body);
+          print('Active plantings fetched: $_plantings');
         });
       } else {
-        throw Exception('Failed to fetch active plantings: ${response.statusCode}');
+        throw Exception('Failed to fetch active plantings: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       setState(() {
         _error = e.toString();
+        print('Error fetching active plantings: $e');
       });
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _fetchActivePlantings,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
+  void _trySetPlantingId(String plantingId, {int retries = 3, int delayMs = 100}) {
+    if (retries <= 0) {
+      print('Error: Max retries reached, could not set planting ID');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load planting details. Please try again.')),
+      );
+      return;
+    }
+
+    if (widget.plantingDetailsKey.currentState != null) {
+      print('Setting planting ID: $plantingId');
+      widget.plantingDetailsKey.currentState!.setPlantingId(plantingId);
+    } else {
+      print('PlantingDetailsTab state not found, retrying ($retries attempts left)...');
+      Future.delayed(Duration(milliseconds: delayMs), () {
+        _trySetPlantingId(plantingId, retries: retries - 1, delayMs: delayMs * 2);
+      });
+    }
+  }
+
+  Widget _buildPlantingCard(Map<String, dynamic> planting) {
+    return GestureDetector(
+      onTap: () {
+        print('Navigating to PlantingDetailsTab with planting ID: ${planting['id']}');
+        widget.tabController.animateTo(2);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _trySetPlantingId(planting['id']);
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16.0),
         padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.green.withOpacity(0.2)),
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_isLoading)
-              const Center(child: CircularProgressIndicator())
-            else if (_error != null)
-              Center(child: Text('Error: $_error'))
-            else if (_plantings.isEmpty)
-                const Center(child: Text('No active plantings found.'))
-              else
-                ..._plantings.map((planting) => _buildPlantingCard(planting)).toList(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  planting['plotIdentifier'] ?? 'N/A',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    planting['bananaVariety'] ?? 'N/A',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green[800],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 16, color: Colors.green),
+                const SizedBox(width: 8),
+                Text(
+                  planting['plantingDate'] != null
+                      ? 'Planted: ${DateFormat('MMM dd, yyyy').format(DateTime.parse(planting['plantingDate']))}'
+                      : 'Planted: N/A',
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.trending_up, size: 16, color: Colors.green),
+                const SizedBox(width: 8),
+                Text(
+                  'Stage: ${planting['currentStage']?.replaceAll('_', ' ') ?? 'N/A'}',
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.local_florist, size: 16, color: Colors.green),
+                const SizedBox(width: 8),
+                Text(
+                  '${planting['numberOfPlants'] ?? 'N/A'} plants',
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Progress',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  planting['progressPercentage'] != null
+                      ? '${(planting['progressPercentage'] * 1).toStringAsFixed(1)}%'
+                      : 'N/A',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            LinearProgressIndicator(
+              value: planting['progressPercentage'] ?? .0,
+              backgroundColor: Colors.grey[200],
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.green[600]!),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${planting['completedTasksCount'] ?? 'N/A'} tasks completed',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                Text(
+                  planting['totalTasksCount'] != null && planting['completedTasksCount'] != null
+                      ? '${planting['totalTasksCount'] - planting['completedTasksCount']} remaining'
+                      : 'N/A remaining',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPlantingCard(Map<String, dynamic> planting) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16.0),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.green[700]!.withOpacity(0.3),
-          width: 1.5,
-        ),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withOpacity(0.9),
-            Colors.white.withOpacity(0.8),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.green[700]!.withOpacity(0.9),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.green[700]!.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    return RefreshIndicator(
+      onRefresh: _fetchActivePlantings,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Active Plantings',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
                   ),
-                ],
-              ),
-              child: const Icon(
-                Icons.local_florist,
-                color: Colors.white,
-                size: 20,
-              ),
+                ),
+                Text(
+                  '${_plantings.length} active',
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ],
             ),
-            title: Text(
-              'Plot: ${planting['plotIdentifier']}',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.green[900]!.withOpacity(0.8),
-                fontSize: 16,
-              ),
-            ),
-            subtitle: Text(
-              'Variety: ${planting['bananaVariety']} | Plants: ${planting['numberOfPlants']}',
-              style: TextStyle(
-                color: Colors.green[900]!.withOpacity(0.6),
-                fontSize: 14,
-              ),
-            ),
-            onTap: () {
-              _BananaPlantingScreenState? parentState = context.findAncestorStateOfType<_BananaPlantingScreenState>();
-              parentState?._tabController.animateTo(2);
-              PlantingDetailsTabState? detailsState = context.findAncestorWidgetOfExactType<PlantingDetailsTab>()?.createState() as PlantingDetailsTabState?;
-              detailsState?.setPlantingId(planting['id']);
-            },
-          ),
+            const SizedBox(height: 16),
+            if (_isLoading)
+              const Center(child: CircularProgressIndicator())
+            else if (_error != null)
+              Center(child: Text('Error: $_error'))
+            else if (_plantings.isEmpty)
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.info_outline, size: 48, color: Colors.grey),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'No active plantings found',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: () => widget.tabController.animateTo(0),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Create Planting',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ..._plantings.map((planting) => _buildPlantingCard(planting)).toList(),
+          ],
         ),
       ),
     );
@@ -446,7 +783,7 @@ class PlantingDetailsTab extends StatefulWidget {
   PlantingDetailsTabState createState() => PlantingDetailsTabState();
 }
 
-class PlantingDetailsTabState extends State<PlantingDetailsTab> {
+class PlantingDetailsTabState extends State<PlantingDetailsTab> with AutomaticKeepAliveClientMixin {
   String? _plantingId;
   Map<String, dynamic>? _plantingDetails;
   List<dynamic>? _tasks;
@@ -454,17 +791,39 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
   bool _isLoading = false;
   String? _error;
 
-  void setPlantingId(String id) {
-    setState(() {
-      _plantingId = id;
-    });
-    _fetchPlantingDetails();
-    _fetchTasks();
-    _fetchProgress();
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    print('PlantingDetailsTab initialized');
   }
 
-  Future<void> _fetchPlantingDetails() async {
-    if (_plantingId == null) return;
+  void setPlantingId(String id) {
+    print('setPlantingId called with ID: $id');
+    setState(() {
+      _plantingId = id;
+      _plantingDetails = null;
+      _tasks = null;
+      _progress = null;
+    });
+    _fetchPlantingData();
+  }
+
+  String _formatLargeNumber(int? number) {
+    if (number == null) return 'N/A';
+    if (number < 1000) return number.toString();
+    if (number < 1000000) return '${(number / 1000).toStringAsFixed(2)}K';
+    if (number < 1000000000) return '${(number / 1000000).toStringAsFixed(2)}M';
+    return '${(number / 1000000000).toStringAsFixed(2)}B';
+  }
+
+  Future<void> _fetchPlantingData() async {
+    if (_plantingId == null) {
+      print('No planting ID set, skipping fetch');
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -472,102 +831,71 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
     });
 
     try {
-      final httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 5);
-      final client = IOClient(httpClient);
+      final authToken = widget.authToken ?? await SecureStorage().read('authToken');
+      if (authToken == null) {
+        throw Exception('No auth token available');
+      }
 
-      final uri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/plantings/$_plantingId');
       final headers = <String, String>{
         'Content-Type': 'application/json',
-        if (widget.authToken != null) 'Authorization': 'Bearer ${widget.authToken}',
+        'Authorization': 'Bearer $authToken',
       };
 
-      final response = await client.get(uri, headers: headers);
+      // Fetch planting details
+      final detailsUri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/plantings/$_plantingId');
+      print('Fetching planting details from: $detailsUri');
+      final detailsResponse = await http.get(detailsUri, headers: headers);
+      print('Planting details response status: ${detailsResponse.statusCode}');
+      print('Planting details response body: ${detailsResponse.body}');
 
-      if (response.statusCode == 200) {
-        setState(() {
-          _plantingDetails = jsonDecode(response.body);
-        });
+      if (detailsResponse.statusCode == 200) {
+        _plantingDetails = jsonDecode(detailsResponse.body);
       } else {
-        throw Exception('Failed to fetch planting details: ${response.statusCode}');
+        throw Exception('Failed to fetch planting details: ${detailsResponse.statusCode} - ${detailsResponse.body}');
       }
+
+      // Fetch tasks
+      final tasksUri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/plantings/$_plantingId/tasks');
+      print('Fetching tasks from: $tasksUri');
+      final tasksResponse = await http.get(tasksUri, headers: headers);
+      print('Tasks response status: ${tasksResponse.statusCode}');
+      print('Tasks response body: ${tasksResponse.body}');
+
+      if (tasksResponse.statusCode == 200) {
+        _tasks = jsonDecode(tasksResponse.body);
+      } else {
+        throw Exception('Failed to fetch tasks: ${tasksResponse.statusCode} - ${tasksResponse.body}');
+      }
+
+      // Fetch progress
+      final progressUri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/plantings/$_plantingId/progress');
+      print('Fetching progress from: $progressUri');
+      final progressResponse = await http.get(progressUri, headers: headers);
+      print('Progress response status: ${progressResponse.statusCode}');
+      print('Progress response body: ${progressResponse.body}');
+
+      if (progressResponse.statusCode == 200) {
+        _progress = jsonDecode(progressResponse.body);
+      } else {
+        throw Exception('Failed to fetch progress: ${progressResponse.statusCode} - ${progressResponse.body}');
+      }
+
+      setState(() {});
     } catch (e) {
       setState(() {
         _error = e.toString();
+        print('Error fetching planting data: $e');
       });
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _fetchTasks() async {
-    if (_plantingId == null) return;
-
-    try {
-      final httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 5);
-      final client = IOClient(httpClient);
-
-      final uri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/plantings/$_plantingId/tasks');
-      final headers = <String, String>{
-        'Content-Type': 'application/json',
-        if (widget.authToken != null) 'Authorization': 'Bearer ${widget.authToken}',
-      };
-
-      final response = await client.get(uri, headers: headers);
-
-      if (response.statusCode == 200) {
-        setState(() {
-          _tasks = jsonDecode(response.body);
-        });
-      } else {
-        throw Exception('Failed to fetch tasks: ${response.statusCode}');
-      }
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
-    }
-  }
-
-  Future<void> _fetchProgress() async {
-    if (_plantingId == null) return;
-
-    try {
-      final httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 5);
-      final client = IOClient(httpClient);
-
-      final uri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/plantings/$_plantingId/progress');
-      final headers = <String, String>{
-        'Content-Type': 'application/json',
-        if (widget.authToken != null) 'Authorization': 'Bearer ${widget.authToken}',
-      };
-
-      final response = await client.get(uri, headers: headers);
-
-      if (response.statusCode == 200) {
-        setState(() {
-          _progress = jsonDecode(response.body);
-        });
-      } else {
-        throw Exception('Failed to fetch progress: ${response.statusCode}');
-      }
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return RefreshIndicator(
-      onRefresh: () async {
-        await _fetchPlantingDetails();
-        await _fetchTasks();
-        await _fetchProgress();
-      },
+      onRefresh: _fetchPlantingData,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16.0),
@@ -580,35 +908,59 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
               const Center(child: CircularProgressIndicator())
             else if (_error != null)
                 Center(child: Text('Error: $_error'))
-              else if (_plantingDetails == null)
-                  const Center(child: Text('No details available.'))
-                else ...[
+              else if (_plantingDetails == null || _tasks == null || _progress == null)
+                  const Center(child: Text('No data available. Tap a planting to load details.'))
+                else
+                  ...[
                     _buildSectionCard(
                       'Planting Details',
                       [
-                        {'label': 'Plot', 'value': _plantingDetails!['plotIdentifier']},
-                        {'label': 'Variety', 'value': _plantingDetails!['bananaVariety']},
-                        {'label': 'Plants', 'value': _plantingDetails!['numberOfPlants'].toString()},
-                        {'label': 'Planting Date', 'value': _plantingDetails!['plantingDate']},
-                        {'label': 'Expected Harvest', 'value': _plantingDetails!['expectedHarvestDate']},
-                        {'label': 'Current Stage', 'value': _plantingDetails!['currentStage']},
+                        {'label': 'ID', 'value': _plantingDetails!['id'] ?? 'N/A'},
+                        {'label': 'Plot', 'value': _plantingDetails!['plotIdentifier'] ?? 'N/A'},
+                        {'label': 'Variety', 'value': _plantingDetails!['bananaVariety'] ?? 'N/A'},
+                        {
+                          'label': 'Plants',
+                          'value': _formatLargeNumber(_plantingDetails!['numberOfPlants'] as int?)
+                        },
+                        {'label': 'Planting Date', 'value': _plantingDetails!['plantingDate'] ?? 'N/A'},
+                        {
+                          'label': 'Expected Harvest',
+                          'value': _plantingDetails!['expectedHarvestDate'] ?? 'N/A'
+                        },
+                        {
+                          'label': 'Current Stage',
+                          'value': _plantingDetails!['currentStage']?.replaceAll('_', ' ') ?? 'N/A'
+                        },
+                        {
+                          'label': 'Days from Planting',
+                          'value': _formatLargeNumber(_plantingDetails!['daysFromPlanting'] as int?)
+                        },
                       ],
                       Icons.local_florist,
                     ),
                     const SizedBox(height: 16),
-                    if (_progress != null)
-                      _buildSectionCard(
-                        'Progress',
-                        [
-                          {'label': 'Days from Planting', 'value': _progress!['daysFromPlanting'].toString()},
-                          {'label': 'Completed Tasks', 'value': '${_progress!['completedTasksCount']}/${_progress!['totalTasksCount']}'},
-                          {'label': 'Progress', 'value': '${(_progress!['progressPercentage'] * 100).toStringAsFixed(1)}%'},
-                        ],
-                        Icons.bar_chart,
-                      ),
+                    _buildTasksSection('Tasks', _tasks!, false),
                     const SizedBox(height: 16),
-                    if (_tasks != null && _tasks!.isNotEmpty)
-                      _buildTasksSection(),
+                    _buildSectionCard(
+                      'Progress',
+                      [
+                        {
+                          'label': 'Completed Tasks',
+                          'value': _formatLargeNumber(_progress!['completedTasksCount'] as int?)
+                        },
+                        {
+                          'label': 'Total Tasks',
+                          'value': _formatLargeNumber(_progress!['totalTasksCount'] as int?)
+                        },
+                        {
+                          'label': 'Progress',
+                          'value': _progress!['progressPercentage'] != null
+                              ? '${(_progress!['progressPercentage'] * 100).toStringAsFixed(1)}%'
+                              : 'N/A'
+                        },
+                      ],
+                      Icons.trending_up,
+                    ),
                   ],
           ],
         ),
@@ -621,24 +973,14 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
       margin: const EdgeInsets.only(bottom: 16.0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.green[700]!.withOpacity(0.3),
-          width: 1.5,
-        ),
+        border: Border.all(color: Colors.green[700]!.withOpacity(0.3), width: 1.5),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withOpacity(0.9),
-            Colors.white.withOpacity(0.8),
-          ],
+          colors: [Colors.white.withOpacity(0.9), Colors.white.withOpacity(0.8)],
         ),
         boxShadow: [
-          BoxShadow(
-            color: Colors.green.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
+          BoxShadow(color: Colors.green.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: ClipRRect(
@@ -659,11 +1001,7 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
                   ),
                 ],
               ),
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 20,
-              ),
+              child: Icon(icon, color: Colors.white, size: 20),
             ),
             title: Text(
               title,
@@ -677,31 +1015,28 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
               Container(
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(
-                      color: Colors.green[700]!.withOpacity(0.1),
-                      width: 1,
-                    ),
-                  ),
+                  border: Border(top: BorderSide(color: Colors.green[700]!.withOpacity(0.1), width: 1)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: items.map((item) => Padding(
+                  children: items
+                      .map((item) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          item['label']!,
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                        Text(
-                          item['value']!,
-                          style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                        Text(item['label']!, style: const TextStyle(fontWeight: FontWeight.w500)),
+                        Flexible(
+                          child: Text(
+                            item['value']!,
+                            style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                            textAlign: TextAlign.right,
+                          ),
                         ),
                       ],
                     ),
-                  )).toList(),
+                  ))
+                      .toList(),
                 ),
               ),
             ],
@@ -711,29 +1046,19 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
     );
   }
 
-  Widget _buildTasksSection() {
+  Widget _buildTasksSection(String title, List<dynamic> tasks, bool showCompleteButton) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.green[700]!.withOpacity(0.3),
-          width: 1.5,
-        ),
+        border: Border.all(color: Colors.green[700]!.withOpacity(0.3), width: 1.5),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withOpacity(0.9),
-            Colors.white.withOpacity(0.8),
-          ],
+          colors: [Colors.white.withOpacity(0.9), Colors.white.withOpacity(0.8)],
         ),
         boxShadow: [
-          BoxShadow(
-            color: Colors.green.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
+          BoxShadow(color: Colors.green.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: ClipRRect(
@@ -754,14 +1079,10 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.task_alt,
-                color: Colors.white,
-                size: 20,
-              ),
+              child: const Icon(Icons.task_alt, color: Colors.white, size: 20),
             ),
             title: Text(
-              'Tasks',
+              title,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: Colors.green[900]!.withOpacity(0.8),
@@ -772,26 +1093,21 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
               Container(
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(
-                      color: Colors.green[700]!.withOpacity(0.1),
-                      width: 1,
-                    ),
-                  ),
+                  border: Border(top: BorderSide(color: Colors.green[700]!.withOpacity(0.1), width: 1)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: _tasks!.map((task) => Padding(
+                  children: tasks.isEmpty
+                      ? [const Text('No tasks available', style: TextStyle(fontSize: 14, color: Colors.grey))]
+                      : tasks
+                      .map((task) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '• ${task['description']}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: 15,
-                          ),
+                          '• ${task['description'] ?? 'N/A'}',
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
                         ),
                         Padding(
                           padding: const EdgeInsets.only(left: 16, top: 4),
@@ -799,33 +1115,355 @@ class PlantingDetailsTabState extends State<PlantingDetailsTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Due: ${task['dueDate']}',
+                                'ID: ${task['id'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Due: ${task['dueDate'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Status: ${task['status'] ?? 'N/A'}',
                                 style: TextStyle(
-                                  color: Colors.green[900]!.withOpacity(0.7),
+                                  color: task['status'] == 'PENDING' ? Colors.orange[700] : Colors.green[700],
                                 ),
                               ),
-                              const SizedBox(height: 2),
                               Text(
-                                'Status: ${task['status']}',
-                                style: TextStyle(
-                                  color: task['status'] == 'PENDING'
-                                      ? Colors.orange[700]
-                                      : Colors.green[700],
-                                ),
+                                'Priority: ${task['priority'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
                               ),
-                              const SizedBox(height: 2),
                               Text(
-                                'Priority: ${task['priority']}',
-                                style: TextStyle(
-                                  color: Colors.green[900]!.withOpacity(0.7),
-                                ),
+                                'Category: ${task['category'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Planting ID: ${task['plantingId'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Plot: ${task['plotIdentifier'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
                               ),
                             ],
                           ),
                         ),
                       ],
                     ),
-                  )).toList(),
+                  ))
+                      .toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Tab 4: Tasks
+class TasksTab extends StatefulWidget {
+  final String? authToken;
+  const TasksTab({Key? key, this.authToken}) : super(key: key);
+
+  @override
+  State<TasksTab> createState() => _TasksTabState();
+}
+
+class _TasksTabState extends State<TasksTab> with AutomaticKeepAliveClientMixin {
+  List<dynamic> _upcomingTasks = [];
+  List<dynamic> _todayTasks = [];
+  List<dynamic> _overdueTasks = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchTasks();
+    print('TasksTab initialized');
+  }
+
+  Future<void> _fetchTasks() async {
+    final authToken = widget.authToken ?? await SecureStorage().read('authToken');
+    if (authToken == null) {
+      Navigator.pushReplacementNamed(context, '/auth/signin');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $authToken',
+      };
+
+      // Fetch upcoming tasks
+      final upcomingUri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/tasks/upcoming');
+      print('Fetching upcoming tasks from: $upcomingUri');
+      final upcomingResponse = await http.get(upcomingUri, headers: headers);
+      print('Upcoming tasks response status: ${upcomingResponse.statusCode}');
+      print('Upcoming tasks response body: ${upcomingResponse.body}');
+
+      if (upcomingResponse.statusCode == 200) {
+        _upcomingTasks = jsonDecode(upcomingResponse.body);
+        print('Upcoming tasks fetched: $_upcomingTasks');
+      } else {
+        throw Exception('Failed to fetch upcoming tasks: ${upcomingResponse.statusCode} - ${upcomingResponse.body}');
+      }
+
+      // Fetch today's tasks
+      final todayUri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/tasks/today');
+      print('Fetching today\'s tasks from: $todayUri');
+      final todayResponse = await http.get(todayUri, headers: headers);
+      print('Today tasks response status: ${todayResponse.statusCode}');
+      print('Today tasks response body: ${todayResponse.body}');
+
+      if (todayResponse.statusCode == 200) {
+        _todayTasks = jsonDecode(todayResponse.body);
+        print('Today tasks fetched: $_todayTasks');
+      } else {
+        throw Exception('Failed to fetch today\'s tasks: ${todayResponse.statusCode} - ${todayResponse.body}');
+      }
+
+      // Fetch overdue tasks
+      final overdueUri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/tasks/overdue');
+      print('Fetching overdue tasks from: $overdueUri');
+      final overdueResponse = await http.get(overdueUri, headers: headers);
+      print('Overdue tasks response status: ${overdueResponse.statusCode}');
+      print('Overdue tasks response body: ${overdueResponse.body}');
+
+      if (overdueResponse.statusCode == 200) {
+        _overdueTasks = jsonDecode(overdueResponse.body);
+        print('Overdue tasks fetched: $_overdueTasks');
+      } else {
+        throw Exception('Failed to fetch overdue tasks: ${overdueResponse.statusCode} - ${overdueResponse.body}');
+      }
+
+      setState(() {});
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        print('Error fetching tasks: $e');
+      });
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _completeTask(String taskId) async {
+    try {
+      final authToken = widget.authToken ?? await SecureStorage().read('authToken');
+      if (authToken == null) {
+        throw Exception('No auth token available');
+      }
+
+      final uri = Uri.parse('${dotenv.env['BACKEND_URL']}/api/tasks/$taskId/complete');
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $authToken',
+      };
+
+      print('Completing task with ID: $taskId');
+      final response = await http.post(uri, headers: headers);
+      print('Task completion response status: ${response.statusCode}');
+      print('Task completion response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Task completed successfully!')),
+        );
+        await _fetchTasks(); // Refresh all tasks
+      } else {
+        throw Exception('Failed to complete task: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error completing task: $e')),
+      );
+      print('Error completing task: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    return RefreshIndicator(
+      onRefresh: _fetchTasks,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tasks',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isLoading)
+              const Center(child: CircularProgressIndicator())
+            else if (_error != null)
+              Center(child: Text('Error: $_error'))
+            else if (_upcomingTasks.isEmpty && _todayTasks.isEmpty && _overdueTasks.isEmpty)
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.task_alt, size: 48, color: Colors.grey),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'No tasks found',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ...[
+                  if (_overdueTasks.isNotEmpty)
+                    _buildTasksSection('Overdue Tasks', _overdueTasks, true),
+                  const SizedBox(height: 16),
+                  if (_todayTasks.isNotEmpty)
+                    _buildTasksSection('Today\'s Tasks', _todayTasks, true),
+                  const SizedBox(height: 16),
+                  if (_upcomingTasks.isNotEmpty)
+                    _buildTasksSection('Upcoming Tasks', _upcomingTasks, true),
+                ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTasksSection(String title, List<dynamic> tasks, bool showCompleteButton) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16.0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green[700]!.withOpacity(0.3), width: 1.5),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white.withOpacity(0.9), Colors.white.withOpacity(0.8)],
+        ),
+        boxShadow: [
+          BoxShadow(color: Colors.green.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: ExpansionTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green[700]!.withOpacity(0.9),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green[700]!.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.task_alt, color: Colors.white, size: 20),
+            ),
+            title: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.green[900]!.withOpacity(0.8),
+                fontSize: 16,
+              ),
+            ),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: Colors.green[700]!.withOpacity(0.1), width: 1)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: tasks
+                      .map((task) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '• ${task['description'] ?? 'N/A'}',
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, top: 4),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ID: ${task['id'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Due: ${task['dueDate'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Status: ${task['status'] ?? 'N/A'}',
+                                style: TextStyle(
+                                  color: task['status'] == 'PENDING' ? Colors.orange[700] : Colors.green[700],
+                                ),
+                              ),
+                              Text(
+                                'Priority: ${task['priority'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Category: ${task['category'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Planting ID: ${task['plantingId'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              Text(
+                                'Plot: ${task['plotIdentifier'] ?? 'N/A'}',
+                                style: TextStyle(color: Colors.green[900]!.withOpacity(0.7)),
+                              ),
+                              if (showCompleteButton && task['status'] == 'PENDING') ...[
+                                const SizedBox(height: 8),
+                                ElevatedButton(
+                                  onPressed: () => _completeTask(task['id']),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green[700],
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  child: const Text(
+                                    'Mark as Complete',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+                      .toList(),
                 ),
               ),
             ],
